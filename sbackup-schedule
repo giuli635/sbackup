@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+if [[ "$1" == "run" ]]; then
+    shift 1
+    for backup in "$@"
+    do
+        declare error_code
+        action="$(notify-send -a sbackup -i drive-harddisk \
+            -A postpone=Postpone "$backup backup")"
+        if [[ "$action" == "postpone" ]]; then
+            response=("$(yad --form --columns=2 --field="Postpone":NUM \
+                --field="":CBE '' 'minute!hour!day!week' --center --no-escape \
+                --sticky --separator "\n")")
+            
+            error_code=$?
+            if [[ $error_code == 0 ]]; then
+                echo "sbackup-shedule run $backup" | at now + "${response[@]}"
+            fi
+        fi
+
+        if [[ "$action" == "" || "$error_code" == 0 ]]; then
+            response="$(yad --entry --numeric --center --no-escape --sticky \
+                --entry-label Cores)"
+            
+            sbackup make --cores "${response:-1}" -- "$backup"
+        fi
+    done
+elif [[ "$1" == "-h" ]]; then
+    echo "Usage: sbackup-schedule BACKUPS [BACKUPS...]"
+    echo "   or: sbackup-schedule run BACKUPS [BACKUPS...]"
+    echo
+    echo "A script schedule the usage of sbackup. Uses sbackup"
+    echo "to obtain the frequency the backup should be made."
+    echo
+    echo "Positional arguments"
+    echo "  BACKUPS                 the sbackup backups to schedule"
+    echo "  run                     shows a notification of the noticing the user"
+    echo "                          a backup is scheduled, and using yad and notify-send"
+    echo "                          actions allows to specify a postponment time."
+    echo "                          Also allows the user to specify the cores used by zstd"
+    echo "                          at the moment of creating the backup."
+    echo
+    echo "Options:"
+    echo "  -h                      shows this help and exits"
+else
+    for backup in "$@"
+    do
+        run_time="$(sbackup info -a frequency $backup)"
+        echo "sbackup-shedule run $backup" | at now + "$run_time"
+    done
+fi
