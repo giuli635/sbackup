@@ -6,6 +6,7 @@ import configparser
 import argparse
 import ast
 import sys
+import errno
 from datetime import datetime
 
 def make_arg_parser() -> argparse.ArgumentParser:
@@ -14,14 +15,13 @@ def make_arg_parser() -> argparse.ArgumentParser:
         description='Simple backup managment with configuration files.',
     )
 
-    subparsers = parser.add_subparsers(required=True)
+    subparsers = parser.add_subparsers(required=True, dest='subcommand')
 
-    ls = subparsers.add_parser(
+    subparsers.add_parser(
         'list', aliases=['ls'],
         help='''prints out a list of the backup entries in the
         configuration file''',
     )
-    ls.set_defaults(func=list_entries)
 
     add = subparsers.add_parser(
         'add',
@@ -29,19 +29,9 @@ def make_arg_parser() -> argparse.ArgumentParser:
         and FILES, if no backup location is given, uses the current
         directory''',
     )
-    add.set_defaults(func=create_entry)
-
-    add.add_argument(
-        '-n', '--name',
-        action='store',
-        required=True,
-        help='specifies the name of the backup',
-        metavar='NAME'
-    )
 
     add.add_argument(
         '-f', '--frequency',
-        action='store',
         help='''specifies the frequency of the backups in the format accepted by
         at, in format now + frequency (see: man at), defaults to one week''',
         default='1 week',
@@ -50,15 +40,19 @@ def make_arg_parser() -> argparse.ArgumentParser:
 
     add.add_argument(
         '-l', '--location',
-        action='store',
         help='specifies the backup location',
         default=os.getcwd(),
         metavar='PATH'
     )
 
     add.add_argument(
+        'name',
+        help='specifies the name of the backup',
+        metavar='NAME'
+    )
+
+    add.add_argument(
         'paths',
-        action='store',
         nargs='+',
         help='list of files to use in the backup entry',
         metavar='FILES'
@@ -68,7 +62,6 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'remove', aliases=['rm'],
         help='remove backups from the configuration file'
     )
-    remove.set_defaults(func=remove_backups)
 
     remove.add_argument(
         'backups',
@@ -81,11 +74,9 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'info',
         help='remove backups from the configuration file'
     )
-    info.set_defaults(func=show_info)
 
     info.add_argument(
         '-a', '--about',
-        action='store',
         choices=['paths', 'location', 'frequency'],
         help='specifies the configuration fields to show',
         metavar='{paths,location,frequency}',
@@ -102,18 +93,15 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'make', aliases=['mk'],
         help='make the specified backups'
     )
-    make.set_defaults(func=make_backup)
 
     make.add_argument(
         '-l', '--location',
-        action='store',
         help='overwrites the configuration backup location',
         metavar='PATH'
     )
 
     make.add_argument(
         '-c', '--cores',
-        action='store',
         help='number of cores to be used by zstd (passed as -T, see ztsd docs)',
         default=1,
         type=int,
@@ -132,17 +120,17 @@ def make_arg_parser() -> argparse.ArgumentParser:
         help='modify the specified configuration fields'
     )
 
-    modify_commands = modify.add_subparsers(required=True)
+    modify_commands = modify.add_subparsers(
+        required=True, dest='modify_subcommand'
+    )
 
     location = modify_commands.add_parser(
         'location',
         help='changes the backups\' location'
     )
-    location.set_defaults(func=modify_location)
 
     location.add_argument(
-        'new_location',
-        nargs=1,
+        'new',
         help='the new backup location',
         metavar='PATH'
     )
@@ -158,11 +146,9 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'frequency',
         help='changes the backups\' frequency'
     )
-    frequency.set_defaults(func=modify_frequency)
 
     frequency.add_argument(
-        'new_frequency',
-        nargs=1,
+        'new',
         help='the new frequency',
         metavar='FRECUENCY'
     )
@@ -178,11 +164,9 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'add',
         help='add paths the backup configuration'
     )
-    addpaths.set_defaults(func=add_paths)
 
     addpaths.add_argument(
         'backup',
-        nargs=1,
         help='backup to modify',
         metavar='BACKUP'
     )
@@ -198,11 +182,9 @@ def make_arg_parser() -> argparse.ArgumentParser:
         'remove',
         help='remove paths the backup configuration'
     )
-    removepaths.set_defaults(func=remove_paths)
 
     removepaths.add_argument(
         'backup',
-        nargs=1,
         help='backup to modify',
         metavar='BACKUP'
     )
@@ -230,15 +212,25 @@ def check_config_file(config_file):
     exists = os.path.exists(config_file_path)
     if not exists:
         print("Configuration file not found, could be file permissions too.")
-        exit(1)
+        sys.exit(errno.ENOENT)
     elif os.path.isdir(config_file_path):
         print("The configuration path is a directory.")
-        exit(1)
+        sys.exit(errno.EISDIR)
 
     return config_file_path
 
+def execute_if_found(backup, config, function):
+    backup_found = True
+    if backup in config.sections():
+        function(backup, config)
+    else:
+        print(f'{backup} not found in configuration file.')
+        backup_found = False
+    
+    return backup_found
+
 def create_entry(args, config):
-    if (not args.name in config
+    if (not args.name in config.sections()
         or input('Entry already exists. Do you want to overwrite it?'
             + '("y" to acept): ') == 'y'):
         config[args.name] = {
@@ -247,78 +239,64 @@ def create_entry(args, config):
             'frequency': args.frequency,
         }
 
-    return True
+    return False
 
-def add_paths(args, config):
-    backup = args.backup[0]
-    if backup in config.sections():
-        config[backup]['paths'] = str(
-                ast.literal_eval(config[backup]['paths'])
-                | {os.path.abspath(path) for path in args.paths}
+def remove_entries(args, config):
+    error = False
+    for backup in args.backups:
+        error |= not execute_if_found(
+            backup, config, lambda backup, config: config.pop(backup)
         )
-    else:
-        print(f'{backup} not found in configuration file.')
+    
+    return error
 
-    return True
-
-def remove_paths(args, config):
-    backup = args.backup[0]
-    if backup in config.sections():
+def alter_paths(args, config, operation):
+    def assign(backup, config):
         config[backup]['paths'] = str(
-            ast.literal_eval(config[backup]['paths'])
-            - {os.path.abspath(path) for path in args.paths}
+            operation({os.path.abspath(path) for path in args.paths})
         )
-    else:
-        print(f'{backup} not found in configuration file.')
 
-    return True
+    return not execute_if_found(args.backup, config, assign)
 
-def modify_location(args, config):
+def modify_field(args, config, field):
+    def assign(backup, config):
+        config[backup][field] = args.new
+    error = False
+
     for backup in args.backups:
-        if backup in config.sections():
-            config[backup]['location'] = args.new_location[0]
-        else:
-            print(f'{backup} not found in configuration file.')
+        error |= not execute_if_found(backup, config, assign)
 
-    return True
+    return error 
 
-def modify_frequency(args, config):
-    for backup in args.backups:
-        if backup in config.sections():
-            config[backup]['frequency'] = args.new_frequency[0]
-        else:
-            print(f'{backup} not found in configuration file.')
-
-    return True
-
-def remove_backups(args, config):
-    for backup in args.backups:
-        config.pop(backup)
-
-    return True
+def tar_run(backup, config, cores, date, location):
+    paths = ast.literal_eval(config[backup]['paths'])
+    tar = subprocess.run(
+        ["tar", "--ignore-failed-read", "-c", "-I",
+         f"zstd -19 -T{cores}", "-f",
+         f"{location()}/{backup}-{date}.tar.zstd", *paths],
+        check = True,
+        stderr=sys.stderr,
+        stdout=sys.stdout,
+    )
 
 def make_backup(args, config):
     date = datetime.today().strftime("%Y-%m-%d")
+    error = False
     location = lambda: args.location
     if not args.location:
         location = lambda: config[backup]['location']
     for backup in args.backups:
-        if backup in config.sections():
-            paths = ast.literal_eval(config[backup]['paths'])
-            tar = subprocess.run(
-                ["tar", "--ignore-failed-read", "-c", "-I",
-                 f"zstd -19 -T{args.cores}", "-f",
-                 f"{location()}/{backup}-{date}.tar.zstd", *paths],
-                check = True,
-                stderr=sys.stderr,
-                stdout=sys.stdout,
+        error |= execute_if_found(
+            backup,
+            config,
+            lambda backup, config: tar_run(
+                backup, config, args.cores, date, location
             )
-        else:
-            print(f'{backup} not found in configuration file.')
+        )
 
-    return False
+    return error
 
-def list_entries(args, config):
+def list_entries(config):
     for key in config.sections():
         print(key)
 
@@ -329,13 +307,10 @@ def show_paths(backup, config):
         print('  ' + path)
 
 def show_all_info(backup, config):
-    if backup in config.sections():
-        print('- Location: ' + config[backup]['location'])
-        print('- Paths:')
-        show_paths(backup, config)
-        print('- frequency: ' + config[backup]['frequency'])
-    else:
-        print('not found in configuration file.')
+    print('- Location: ' + config[backup]['location'])
+    print('- Paths:')
+    show_paths(backup, config)
+    print('- frequency: ' + config[backup]['frequency'])
 
 def show_info(args, config):
     info_function = show_all_info
@@ -350,14 +325,20 @@ def show_info(args, config):
             config[backup]['frequency']
         )
 
+    error = False
     if len(args.backups) == 1:
-        info_function(args.backups[0], config)
+        error = not execute_if_found(args.backups[0], config, info_function)
     else:
         for backup in args.backups:
             print("\033[1m" + backup + "\033[0m")
-            info_function(backup, config)
+            error |= execute_if_found(backup, config, info_function)
 
-    return False
+    return error
+
+def update_configuration(config, config_file):
+    config_file.seek(0)
+    config_file.truncate()
+    config.write(config_file)
 
 def main():
     args = make_arg_parser().parse_args()
@@ -370,12 +351,33 @@ def main():
         except configparser.MissingSectionHeaderError:
             pass
 
-        # Every function returns a boolean, specifing if
-        # the configuration file will be altered or not.
-        if args.func(args, config):
-            opened_conf_file.seek(0)
-            opened_conf_file.truncate()
-            config.write(opened_conf_file)
+        error = False
+        if args.subcommand == 'ls' or args.subcommand == 'list':
+            error = list_entries(config)
+        elif args.subcommand == 'info':
+            error = show_info(args, config)
+        elif args.subcommand == 'remove' or args.subcommand == 'rm':
+            error = remove_entries(args, config)
+            update_configuration(config, opened_conf_file)
+        elif args.subcommand == 'add':
+            error = create_entry(args, config)
+            update_configuration(config, opened_conf_file)
+        elif args.subcommand == 'make' or args.subcommand == 'mk':
+            error = make_backup(args, config)
+        elif args.subcommand == 'modify' or args.subcommand == 'md':
+            if (args.modify_subcommand == 'location'
+                or args.modify_subcommand == 'frequency'):
+                error = modify_field(args, config, args.modify_subcommand)
+            else:
+                config_paths = ast.literal_eval(config[args.backup]['paths'])
+                if args.modify_subcommand == 'add':
+                    error = alter_paths(args, config, config_paths.union)
+                elif args.modify_subcommand == 'remove':
+                    error = alter_paths(args, config, config_paths.difference)
+            update_configuration(config, opened_conf_file)
+
+    return error
 
 if __name__ == "__main__":
-    main() 
+    if main():
+        sys.exit(1)

@@ -23,6 +23,12 @@ if [[ "$1" == "run" ]]; then
                 --entry-label Cores)"
             
             sbackup make --cores "${response:-1}" -- "$backup"
+            if [[ $? == 0 ]]; then
+                notify-send -a sbackup -i drive-harddisk "$backup finished"
+            else
+                notify-send -a sbackup -i drive-harddisk \ 
+                    -u critical "An error ocurred while making $backup backup"
+            fi
         fi
     done
 elif [[ "$1" == "-h" ]]; then
