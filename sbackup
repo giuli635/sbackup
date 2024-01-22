@@ -115,6 +115,23 @@ def make_arg_parser() -> argparse.ArgumentParser:
         metavar='BACKUPS'
     )
 
+    rename = subparsers.add_parser(
+        'rename', aliases=['rn'],
+        help='rename a backup entry'
+    )
+
+    rename.add_argument(
+        'backup',
+        help='name of the backup to rename',
+        metavar='BACKUP'
+    )
+
+    rename.add_argument(
+        'new_name',
+        help='new name',
+        metavar='NAME'
+    )
+
     modify = subparsers.add_parser(
         'modify', aliases=['md'],
         help='modify the specified configuration fields'
@@ -268,16 +285,6 @@ def modify_field(args, config, field):
 
     return error 
 
-def tar_run(backup, config, cores, date, location):
-    paths = ast.literal_eval(config[backup]['paths'])
-    tar = subprocess.run(
-        ["tar", "--ignore-failed-read", "-c", "-I",
-         f"zstd -19 -T{cores}", "-f",
-         f"{location()}/{backup}-{date}.tar.zstd", *paths],
-        check = True,
-        stderr=sys.stderr,
-        stdout=sys.stdout,
-    )
 
 def make_backup(args, config):
     date = datetime.today().strftime("%Y-%m-%d")
@@ -285,14 +292,20 @@ def make_backup(args, config):
     location = lambda: args.location
     if not args.location:
         location = lambda: config[backup]['location']
-    for backup in args.backups:
-        error |= execute_if_found(
-            backup,
-            config,
-            lambda backup, config: tar_run(
-                backup, config, args.cores, date, location
-            )
+    
+    def tar_run(backup, config):
+        paths = ast.literal_eval(config[backup]['paths'])
+        tar = subprocess.run(
+            ["tar", "--ignore-failed-read", "-c", "-I",
+             f"zstd -19 -T{args.cores}", "-f",
+             f"{location()}/{backup}-{date}.tar.zstd", *paths],
+            check = True,
+            stderr=sys.stderr,
+            stdout=sys.stdout,
         )
+
+    for backup in args.backups:
+        error |= execute_if_found(backup, config, tar_run)
 
     return error
 
@@ -335,6 +348,29 @@ def show_info(args, config):
 
     return error
 
+
+def rename_backup(args, config):
+    def rename(backup, config):
+        config[args.new_name] = config[backup]
+        config.pop(backup)
+
+    error = (
+        execute_if_found(
+            args.new_name, 
+            config, 
+            lambda backup, config: print(
+                f'{backup} is already present in the configuration'
+            )
+        )
+        or not execute_if_found(
+            args.backup,
+            config,
+            rename
+        )
+    )
+
+    return error
+
 def update_configuration(config, config_file):
     config_file.seek(0)
     config_file.truncate()
@@ -364,6 +400,9 @@ def main():
             update_configuration(config, opened_conf_file)
         elif args.subcommand == 'make' or args.subcommand == 'mk':
             error = make_backup(args, config)
+        elif args.subcommand == 'rename' or args.subommand == 'rn':
+            error = rename_backup(args, config)
+            update_configuration(config, opened_conf_file)
         elif args.subcommand == 'modify' or args.subcommand == 'md':
             if (args.modify_subcommand == 'location'
                 or args.modify_subcommand == 'frequency'):
