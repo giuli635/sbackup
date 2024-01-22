@@ -6,15 +6,25 @@ To use the bash script is needed `yad` and a notification server running with su
 
 The installation script is really simple, if you want to add functionality please make a pull request, any improvements are welcome.
 
+## Installation
+
+```bash
+git clone https://github.com/giuli635/sbackup.git
+cd sbackup
+./install.sh
+```
+
+If you prefer to install it for every user in the system you should simply call `install.sh` with `sudo`. The script should notice if any dependency is missing, but I recommend checking this by yourself.
+
 ## `sbackup` usage:
 ```
 usage: sbackup [-h] [-c CONFIG_FILE]
-               {list,ls,add,remove,rm,info,make,mk,modify,md} ...
+               {list,ls,add,remove,rm,info,make,mk,rename,rn,modify,md} ...
 
 Simple backup managment with configuration files.
 
 positional arguments:
-  {list,ls,add,remove,rm,info,make,mk,modify,md}
+  {list,ls,add,remove,rm,info,make,mk,rename,rn,modify,md}
     list (ls)           prints out a list of the backup entries in the
                         configuration file
     add                 creates a new configuration entry with a given backup
@@ -23,6 +33,7 @@ positional arguments:
     remove (rm)         remove backups from the configuration file
     info                remove backups from the configuration file
     make (mk)           make the specified backups
+    rename (rn)         rename a backup entry
     modify (md)         modify the specified configuration fields
 
 options:
@@ -40,14 +51,14 @@ options:
 ```
 
 ```
-usage: sbackup add [-h] -n NAME [-f FRECUENCY] [-l PATH] FILES [FILES ...]
+usage: sbackup add [-h] [-f FRECUENCY] [-l PATH] NAME FILES [FILES ...]
 
 positional arguments:
+  NAME                  specifies the name of the backup
   FILES                 list of files to use in the backup entry
 
 options:
   -h, --help            show this help message and exit
-  -n NAME, --name NAME  specifies the name of the backup
   -f FRECUENCY, --frequency FRECUENCY
                         specifies the frequency of the backups in the format
                         accepted by at, in format now + frequency (see: man
@@ -91,6 +102,17 @@ options:
   -c CORES, --cores CORES
                         number of cores to be used by zstd (passed as -T, see
                         ztsd docs)
+```
+
+```
+usage: sbackup rename [-h] BACKUP NAME
+
+positional arguments:
+  BACKUP      name of the backup to rename
+  NAME        new name
+
+options:
+  -h, --help  show this help message and exit
 ```
 
 ```
