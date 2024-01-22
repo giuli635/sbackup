@@ -218,11 +218,15 @@ def make_arg_parser() -> argparse.ArgumentParser:
         action='store',
         help='''specifies the configuration file to use, the default
         location is ~/.config/backup-config.ini''',
-        default=f"{os.getenv('HOME')}/.config/backup-config.ini",
+        default=f"{get_config_folder()}/backup-config.ini",
         metavar='CONFIG_FILE'
     )
 
     return parser
+
+def get_config_folder():
+    config_home = os.getenv('XDG_CONFIG_HOME')
+    return config_home if config_home else f"{os.getenv('HOME')}/.config"
 
 def check_config_file(config_file):
     config_file_path = os.path.abspath(config_file)
