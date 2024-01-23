@@ -2,6 +2,8 @@
 
 if [[ "$1" == "run" ]]; then
     shift 1
+    export DISPLAY=":0.0"
+
     for backup in "$@"
     do
         declare error_code
@@ -14,19 +16,19 @@ if [[ "$1" == "run" ]]; then
             
             error_code=$?
             if [[ $error_code == 0 ]]; then
-                echo "sbackup-shedule run $backup" | at now + "${response[@]}"
+                echo "sbackup-schedule run $backup" | at -M now + "${response[@]}"
             fi
         fi
 
-        if [[ "$action" == "" || "$error_code" == 0 ]]; then
+        if [[ "$action" == "" || "$error_code" != 0 ]]; then
             response="$(yad --entry --numeric --center --no-escape --sticky \
                 --entry-label Cores)"
             
             sbackup make --cores "${response:-1}" -- "$backup"
-            if [[ $? == 0 ]]; then
+            if [[ "$?" == 0 ]]; then
                 notify-send -a sbackup -i drive-harddisk "$backup finished"
             else
-                notify-send -a sbackup -i drive-harddisk \ 
+                notify-send -a sbackup -i drive-harddisk \
                     -u critical "An error ocurred while making $backup backup"
             fi
         fi
@@ -52,6 +54,6 @@ else
     for backup in "$@"
     do
         run_time="$(sbackup info -a frequency $backup)"
-        echo "sbackup-shedule run $backup" | at now + "$run_time"
+        echo "sbackup-shedule run $backup" | at -M now + "$run_time"
     done
 fi

@@ -300,7 +300,7 @@ def make_backup(args, config):
     def tar_run(backup, config):
         paths = ast.literal_eval(config[backup]['paths'])
         tar = subprocess.run(
-            ["tar", "--ignore-failed-read", "-c", "-I",
+            ["tar", "--ignore-failed-read", "-C", "/", "-c", "-I",
              f"zstd -19 -T{args.cores}", "-f",
              f"{location()}/{backup}-{date}.tar.zstd", *paths],
             check = True,
@@ -309,7 +309,7 @@ def make_backup(args, config):
         )
 
     for backup in args.backups:
-        error |= execute_if_found(backup, config, tar_run)
+        error |= not execute_if_found(backup, config, tar_run)
 
     return error
 
@@ -348,7 +348,7 @@ def show_info(args, config):
     else:
         for backup in args.backups:
             print("\033[1m" + backup + "\033[0m")
-            error |= execute_if_found(backup, config, info_function)
+            error |= not execute_if_found(backup, config, info_function)
 
     return error
 
@@ -358,20 +358,12 @@ def rename_backup(args, config):
         config[args.new_name] = config[backup]
         config.pop(backup)
 
-    error = (
-        execute_if_found(
-            args.new_name, 
-            config, 
-            lambda backup, config: print(
-                f'{backup} is already present in the configuration'
-            )
-        )
-        or not execute_if_found(
-            args.backup,
-            config,
-            rename
-        )
-    )
+    error = False
+    if args.new_name in config.section():
+        error = True
+        print(f'{args.backup} is already present in the configuration')
+
+    error = error or not execute_if_found(args.backup, config, rename)
 
     return error
 
