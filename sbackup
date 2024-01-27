@@ -396,7 +396,7 @@ def main():
             update_configuration(config, opened_conf_file)
         elif args.subcommand == 'make' or args.subcommand == 'mk':
             error = make_backup(args, config)
-        elif args.subcommand == 'rename' or args.subommand == 'rn':
+        elif args.subcommand == 'rename' or args.subcommand == 'rn':
             error = rename_backup(args, config)
             update_configuration(config, opened_conf_file)
         elif args.subcommand == 'modify' or args.subcommand == 'md':

@@ -2,7 +2,7 @@
 
 DEPENDENCIES=("tar" "zstd" "yad" "python")
 
-for command in ${DEPENDENCIES[@]}
+for command in "${DEPENDENCIES[@]}"
 do
     if [[ ! $(command -v $command) ]]; then
         echo "$command not found, please install it."
@@ -16,6 +16,8 @@ fi
 if [[ $(id -u) == 0 ]]; then
     echo "Running root installation"
     install sbackup sbackup-schedule /usr/bin/
+    touch /var/log/sbackup.log
+    chmod 766 /var/log/sbackup.log 
 else
     echo "Running user installation ($(whoami))"
     install sbackup sbackup-schedule $HOME/.local/bin/
@@ -26,5 +28,9 @@ else
     else
         touch "$config_file_path"
     fi
+
+    echo "Creating the log file"
+    sudo touch /var/log/sbackup.log
+    sudo chmod 766 /var/log/sbackup.log 
 fi
 
