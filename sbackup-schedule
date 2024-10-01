@@ -89,6 +89,6 @@ else
     redirection="$(check_logging)"
     for backup in "$@"
     do
-        schedule_from_config "$redirection" "$backup"
+        schedule_from_config "$backup" "$redirection"
     done
 fi

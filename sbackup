@@ -72,7 +72,7 @@ def make_arg_parser() -> argparse.ArgumentParser:
 
     info = subparsers.add_parser(
         'info',
-        help='remove backups from the configuration file'
+        help='show information about the given backup entry'
     )
 
     info.add_argument(
